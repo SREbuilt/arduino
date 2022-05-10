@@ -9,7 +9,7 @@ extern "C" {
 #include "user_interface.h"
 }
  
-#define INT_PIN1 5     // Zuordnung der GPIOs
+#define INT_PIN1 5     								  // Zuordnung der GPIOs
 #define INT_PIN2 4
 #define INT_PIN3 2
 #define INT_PIN4 13
@@ -17,22 +17,26 @@ extern "C" {
 #define INT_PIN6 14
  
 unsigned long impulse[6], alteZeit[6], entprellZeit[6];
- 
-ESP8266WebServer server(80);// Serverport  hier einstellen
+
+
+// repo https://github.com/msussek/arduino/tree/master/pulsecounter
+
+
+ESP8266WebServer server(80);						// Serverport  hier einstellen
 ESP8266HTTPUpdateServer httpUpdater;
 Ticker Timer;
 WiFiClient net;
 PubSubClient client(net);
 
 // Zugangsdaten zum WLAN:
-const char* ssid = "meineWLAN-SSID";
-const char* password = "meinWLANPasswort";
+const char* ssid = "WLAN-M";
+const char* password = ":Mi3tz3sa4H!)";
 
 // Zugangsdaten zum MQTT-Broker:
-const char* mqtt_server = "HostnameMQTT-Broker";
-const int   mqtt_port = 1883;
-const char* mqtt_user = "meinMQTTUserName";
-const char* mqtt_password = "meinMQTTPasswort";
+const char* mqtt_server = "192.168.178.74"; 			// "HostnameMQTT-Broker";
+const int   mqtt_port = 1880;
+const char* mqtt_user = "iobroker"; 						// "meinMQTTUserName";
+const char* mqtt_password = "ym45dzd5w2cr4uv9";					// "meinMQTTPasswort";
 
  
 void ICACHE_RAM_ATTR interruptRoutine1() {
@@ -58,7 +62,7 @@ void handleInterrupt(int i){
   unsigned long timeInMillis = millis();
   if((timeInMillis - alteZeit[i]) > entprellZeit[i] || timeInMillis < alteZeit[i]) { 
     impulse[i]++;
-    Serial.println("Impulse Zähler " + String(i) + ": " + String(impulse[i]));
+    Serial.println("impulse count of meter " + String(i) + ": " + String(impulse[i]));
     alteZeit[i] = timeInMillis;
    }
 }
@@ -73,12 +77,13 @@ void handleHttpRequest(){
 }
  
 void sendMqttMessage(){ 
-  Serial.println("Sende MQTT Nachrichten");
+  Serial.println("sending MQTT messages");
   for (int i = 0; i < 6; i++) {
     char buffer[10];
     sprintf(buffer, "%lu", impulse[i]);
     String topic = "/SmartHome/Sensor/Haustechnikraum/Impulszaehler/Zaehler_" + String(i) + "/Impulse";
     client.publish(const_cast<char*>(topic.c_str()), buffer);
+    Serial.println(topic + ": " + buffer);
   }
   for (int i = 0; i < 6; i++) {
     char buffer[10];
@@ -88,22 +93,20 @@ void sendMqttMessage(){
   }
 }
 
-void reconnect() {
-  // Loop until we're reconnected
+void reconnect() {  								// Loop until we're reconnected
   while (!client.connected()) {
-    Serial.print("Verbindungsaufbau zum MQTT-Broker...");
-    // Create a random client ID
-    String clientId = "ESP8266Client-";
-    clientId += String(random(0xffff), HEX);
-    // Attempt to connect
+    Serial.print("connecting to MQTT broker ..."); // Create a random client ID
+    String clientId = "ESP8266_client_";
+    // clientId += String(random(0xffff), HEX);
+    clientId += "BE-FF-4D-4D-DF-C0";  // MAC address of ESP8266 WeMos mini pro
+	// Attempt to connect
     if (client.connect(clientId.c_str(), mqtt_user, mqtt_password)) {
-      Serial.println("connected");
+      Serial.println(clientId + " is connected now to MQTT broker");
       client.subscribe("/SmartHome/Sensor/Haustechnikraum/Impulszaehler/*/Entprellzeit");
     } else {
-      Serial.print("fehlgeschlagen, rc=");
+      Serial.print("connection failed, rc=");
       Serial.print(client.state());
-      Serial.println(" erneut versuchen in 5 Sekunden");
-      // Wait 5 seconds before retrying
+      Serial.println(" --> retrying to connect in 5 seconds"); // Wait 5 seconds before retrying
       delay(5000);
     }
   }
@@ -115,10 +118,9 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (int i = 0; i < 6; i++) {
     char buffer[10];
     String topic = "/SmartHome/Sensor/Haustechnikraum/Impulszaehler/Zaehler_" + String(i) + "/Entprellzeit";
-    if (sTopic == topic) {
-       // Workaround to get int from payload
+    if (sTopic == topic) {							// Workaround to get int from payload
       payload[length] = '\0';
-      Serial.println("Setze Entprellzeit für Zähler " + String(i) + " auf " + String((char*)payload));
+      Serial.println("setting debounce time for meter " + String(i) + " to " + String((char*)payload)) + " ms";
       entprellZeit[i] = String((char*)payload).toInt();
     }
   }
@@ -134,25 +136,25 @@ void setup(){
  
   Serial.begin(115200);
   Serial.println("");
-  Serial.println("Start");
+  Serial.println("Alive! (MAC: BE-FF-4D-4D-DF-C0)");
   Serial.println("");
-  Serial.println("Warte auf Verbindung");
+  Serial.println("waiting for WLAN connection ...");
  
-  WiFi.mode(WIFI_STA);                             // station  modus verbinde mit dem Router
-  WiFi.begin(ssid, password); // WLAN Login daten
-  WiFi.hostname("ESP-Zaeler");
+  WiFi.mode(WIFI_STA);                             	// station  modus verbinde mit dem Router
+  WiFi.begin(ssid, password); 						// WLAN Login daten
+  WiFi.hostname("ESP8266 impulse counter");
 
   // Warte auf verbindung
-  int timout = 0;
+  int timeout = 0;
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
     Serial.print("O");
-    timout++;
-    if  (timout > 20) // Wenn Anmeldung nicht möglich
+    timeout++;
+    if  (timeout > 20) 								// Wenn Anmeldung nicht möglich
     {
       Serial.println("");
-      Serial.println("Wlan verbindung fehlt");
+      Serial.println("no WLAN connection!");
       break;
     }
   }
@@ -160,9 +162,10 @@ void setup(){
   if (WiFi.status() == WL_CONNECTED)
   {
     Serial.println("");
-    Serial.println("Mit Wlan verbunden");
-    Serial.println("IP Adresse: ");
+    Serial.println("successfully connected to WLAN");
+    Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
+	WiFi.printDiag(Serial);
   }
 
   for (int i = 0; i < 6; i++){
@@ -172,12 +175,12 @@ void setup(){
 
   client.setServer(mqtt_server, mqtt_port);
  
-  server.on("/", handleHttpRequest);     //  Bechandlung der Ereignissen anschlissen
-  httpUpdater.setup(&server);         //  Updater
-  server.begin();                     // Starte den Server
-  Serial.println("HTTP Server gestartet");
+  server.on("/", handleHttpRequest);     			//  Bechandlung der Ereignissen anschliessen
+  httpUpdater.setup(&server);         				//  Updater
+  server.begin();                     				// Starte den Server
+  Serial.println("HTTP server started successfully");
  
-  Timer.attach(30, sendMqttMessage);    // Starte den 60s Timer
+  Timer.attach(30, sendMqttMessage);    			// Starte den 60s Timer
  
   // ---------------------- Starte Interrupts ---------------------------------------------
   attachInterrupt(INT_PIN1, interruptRoutine1, FALLING);
